@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FORCE — PREVIEW</title>
+    <title>FORCE — PREVIEW (увеличенный танк, ниже)</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;800;900&display=swap');
 
@@ -395,12 +395,16 @@
 
         // Танк у самого левого края
         const TANK_OFFSET_X = -20.0;
+        // Увеличенный масштаб танка
+        const BASE_SCALE = 2.6;
+        // Новая базовая высота — танк опущен ниже (было 3.5)
+        const BASE_Y = 0.5;
 
         slides.forEach((s, i) => {
-            s.tank.position.set(TANK_OFFSET_X, 3.5, 0);
+            s.tank.position.set(TANK_OFFSET_X, BASE_Y, 0);
             s.tank.rotation.y = -0.5;
             s.tank.rotation.x = 0.1;
-            s.tank.scale.set(1.3, 1.3, 1.3);
+            s.tank.scale.set(BASE_SCALE, BASE_SCALE, BASE_SCALE);
             s.tank.visible = (i === 0);
             scene.add(s.tank);
         });
@@ -418,7 +422,7 @@
         let appearStart = performance.now();
 
         slides.forEach(s => s.tank.scale.set(0.01, 0.01, 0.01));
-        slides[0].tank.scale.set(1.3, 1.3, 1.3);
+        slides[0].tank.scale.set(BASE_SCALE, BASE_SCALE, BASE_SCALE);
 
         function showSlideText(index) {
             tankNameEl.classList.remove('visible');
@@ -450,8 +454,8 @@
                 const t = Math.min(1, (performance.now() - startTime) / duration);
                 const eased = 1 - Math.pow(1 - t, 3);
 
-                oldTank.position.y = 3.5 + eased * 6;
-                oldTank.scale.setScalar(1.3 * (1 - eased));
+                oldTank.position.y = BASE_Y + eased * 6;
+                oldTank.scale.setScalar(BASE_SCALE * (1 - eased));
                 oldTank.rotation.y = -0.5 + eased * 0.5;
                 if (oldTank.children[2]) oldTank.children[2].rotation.y = 0;
 
@@ -459,12 +463,12 @@
                     requestAnimationFrame(transition);
                 } else {
                     oldTank.visible = false;
-                    oldTank.position.y = 3.5;
+                    oldTank.position.y = BASE_Y;
                     oldTank.position.x = TANK_OFFSET_X;
-                    oldTank.scale.setScalar(1.3);
+                    oldTank.scale.setScalar(BASE_SCALE);
 
                     newTank.visible = true;
-                    newTank.position.set(TANK_OFFSET_X, 3.5 - 5, 0);
+                    newTank.position.set(TANK_OFFSET_X, BASE_Y - 5, 0);
                     newTank.scale.set(0.01, 0.01, 0.01);
                     newTank.rotation.y = -0.5;
                     appearStart = performance.now();
@@ -502,9 +506,9 @@
 
             const tank = slides[currentSlide].tank;
             if (tank.visible && !transitioning) {
-                tank.scale.setScalar(1.3 * eased);
+                tank.scale.setScalar(BASE_SCALE * eased);
 
-                const floatY = 3.5 + Math.sin(time * 1.2) * 0.4;
+                const floatY = BASE_Y + Math.sin(time * 1.2) * 0.4;
                 tank.position.x = TANK_OFFSET_X;
                 tank.position.y = floatY;
                 tank.position.z = 0;
@@ -518,11 +522,11 @@
                 }
             }
 
-            // Камера смотрит на левый край
+            // Камера смотрит на левый край, немного ниже
             camera.position.x = 6 + Math.sin(time * 0.3) * 0.6;
             camera.position.y = 10 + Math.cos(time * 0.25) * 0.4;
             camera.position.z = 24 + Math.sin(time * 0.4 + 1) * 0.6;
-            camera.lookAt(TANK_OFFSET_X, 3.5, 0);
+            camera.lookAt(TANK_OFFSET_X, BASE_Y + 1.0, 0);
 
             stars.rotation.y = time * 0.01;
             stars2.rotation.y = -time * 0.008;
