@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FORCE — PREVIEW</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;800;900&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            overflow: hidden;
+            background: #08080a;
+            font-family: 'Montserrat', sans-serif;
+            color: #e8e8e8;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        canvas { display: block; }
+
+        #previewContainer {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        #sceneSide {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            overflow: hidden;
+        }
+
+        /* Название — в правом верхнем углу, не пересекается с танком */
+        #tankNameWrap {
+            position: absolute;
+            top: 8vh;
+            right: 5vw;
+            z-index: 20;
+            text-align: right;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 0.6vh;
+            max-width: 45vw;
+        }
+
+        #tankName {
+            font-size: clamp(1.8rem, 4.5vw, 4.5rem);
+            font-weight: 900;
+            letter-spacing: 4px;
+            line-height: 0.95;
+            color: #ffffff;
+            text-transform: uppercase;
+            opacity: 0;
+            transform: translateX(60px);
+            transition: opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1), transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+            text-shadow: 0 0 40px rgba(255,170,0,0.25);
+        }
+        #tankName.visible {
+            opacity: 1;
+            transform: translateX(0);
+        }
+        #tankName .accent { color: #ffaa00; }
+
+        #tankSubName {
+            font-size: clamp(0.6rem, 1.0vw, 1.0rem);
+            font-weight: 300;
+            letter-spacing: 6px;
+            color: #ffaa00;
+            text-transform: uppercase;
+            opacity: 0;
+            transform: translateX(60px);
+            transition: opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1), transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        #tankSubName.visible {
+            opacity: 1;
+            transform: translateX(0);
+        }
+
+        #slideDots {
+            position: absolute;
+            bottom: 4vh;
+            right: 5vw;
+            display: flex;
+            gap: 10px;
+            z-index: 20;
+        }
+        .dot {
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            border: 1.5px solid rgba(255,170,0,0.35);
+            background: transparent;
+            transition: background 0.4s, border-color 0.4s, box-shadow 0.4s;
+        }
+        .dot.active {
+            background: #ffaa00;
+            border-color: #ffaa00;
+            box-shadow: 0 0 12px rgba(255,170,0,0.7);
+        }
+
+        .corner-tag {
+            position: absolute;
+            width: 18px;
+            height: 18px;
+            border-color: rgba(255,170,0,0.25);
+            border-style: solid;
+            z-index: 15;
+            pointer-events: none;
+        }
+        .corner-tag.tl { top: 4vh; left: 4vw; border-width: 1px 0 0 1px; }
+        .corner-tag.tr { top: 4vh; right: 4vw; border-width: 1px 1px 0 0; }
+        .corner-tag.bl { bottom: 4vh; left: 4vw; border-width: 0 0 1px 1px; }
+        .corner-tag.br { bottom: 4vh; right: 4vw; border-width: 0 1px 1px 0; }
+
+        #slideProgress {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 2px;
+            background: #ffaa00;
+            z-index: 30;
+            width: 0%;
+            transition: width 0.1s linear;
+            box-shadow: 0 0 10px rgba(255,170,0,0.5);
+        }
+
+        .vignette {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: radial-gradient(circle at 20% 50%, transparent 25%, rgba(8,8,10,0.75) 100%);
+            pointer-events: none;
+            z-index: 12;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="corner-tag tl"></div>
+    <div class="corner-tag tr"></div>
+    <div class="corner-tag bl"></div>
+    <div class="corner-tag br"></div>
+
+    <div class="vignette"></div>
+
+    <div id="slideProgress"></div>
+
+    <div id="previewContainer">
+        <div id="sceneSide"></div>
+    </div>
+
+    <!-- Название в правом верхнем углу -->
+    <div id="tankNameWrap">
+        <div id="tankName">FOR<span class="accent">CE</span></div>
+        <div id="tankSubName">СТАНДАРТНЫЙ ТАНК</div>
+    </div>
+
+    <div id="slideDots">
+        <div class="dot active"></div>
+        <div class="dot"></div>
+        <div class="dot"></div>
+        <div class="dot"></div>
+        <div class="dot"></div>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x08080a);
+
+        // Камера: смотрим на левую часть сцены, где будет танк
+        const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.1, 2000);
+        camera.position.set(6, 10, 24);
+        camera.lookAt(-20, 3.5, 0);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+        renderer.setSize(innerWidth, innerHeight);
+        renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.15;
+        document.getElementById('sceneSide').appendChild(renderer.domElement);
+
+        const hemi = new THREE.HemisphereLight(0xffffff, 0x444455, 0.85);
+        scene.add(hemi);
+
+        const keyLight = new THREE.DirectionalLight(0xffffff, 2.4);
+        keyLight.position.set(14, 22, 12);
+        keyLight.castShadow = true;
+        keyLight.shadow.mapSize.set(2048, 2048);
+        keyLight.shadow.camera.left = -20;
+        keyLight.shadow.camera.right = 20;
+        keyLight.shadow.camera.top = 20;
+        keyLight.shadow.camera.bottom = -20;
+        keyLight.shadow.camera.near = 1;
+        keyLight.shadow.camera.far = 70;
+        keyLight.shadow.bias = -0.0005;
+        scene.add(keyLight);
+
+        const fillLight = new THREE.DirectionalLight(0x88aaff, 0.5);
+        fillLight.position.set(-12, 8, -10);
+        scene.add(fillLight);
+
+        const rimLight = new THREE.PointLight(0xffaa00, 1.8, 40);
+        rimLight.position.set(-8, 5, -9);
+        scene.add(rimLight);
+
+        const ambient = new THREE.AmbientLight(0xffffff, 0.22);
+        scene.add(ambient);
+
+        // Звёзды
+        const starGeo = new THREE.BufferGeometry();
+        const starPos = new Float32Array(1200 * 3);
+        for (let i = 0; i < 1200; i++) {
+            starPos[i*3] = (Math.random() - 0.5) * 120;
+            starPos[i*3+1] = (Math.random() - 0.5) * 80;
+            starPos[i*3+2] = (Math.random() - 0.5) * 120 - 20;
+        }
+        starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+        const starMat = new THREE.PointsMaterial({ color: 0xffaa00, size: 0.08, transparent: true, opacity: 0.5 });
+        const stars = new THREE.Points(starGeo, starMat);
+        scene.add(stars);
+
+        const starGeo2 = new THREE.BufferGeometry();
+        const starPos2 = new Float32Array(800 * 3);
+        for (let i = 0; i < 800; i++) {
+            starPos2[i*3] = (Math.random() - 0.5) * 140;
+            starPos2[i*3+1] = (Math.random() - 0.5) * 100;
+            starPos2[i*3+2] = (Math.random() - 0.5) * 140 - 30;
+        }
+        starGeo2.setAttribute('position', new THREE.BufferAttribute(starPos2, 3));
+        const starMat2 = new THREE.PointsMaterial({ color: 0xffffff, size: 0.05, transparent: true, opacity: 0.35 });
+        const stars2 = new THREE.Points(starGeo2, starMat2);
+        scene.add(stars2);
+
+        function buildTank(bodyColor, turretColor, barrelColor, tracksColor, type = 'normal') {
+            const tank = new THREE.Group();
+            const isHeavy = type === 'heavy';
+            const isLight = type === 'light';
+            const isMG = type === 'mg';
+
+            const bodyMat = new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.5, metalness: 0.4 });
+            const turretMat = new THREE.MeshStandardMaterial({ color: turretColor, roughness: 0.4, metalness: 0.5 });
+            const barrelMat = new THREE.MeshStandardMaterial({ color: barrelColor, roughness: 0.25, metalness: 0.85 });
+            const trackMat = new THREE.MeshStandardMaterial({ color: tracksColor, roughness: 0.9, metalness: 0.1 });
+
+            let bw = 3.6, bh = 1.4, bd = 5.6;
+            let uw = 3.2, uh = 0.8, ud = 4.8;
+            let ty = 2.9, tz = 0.9;
+            if (isHeavy) { bw = 4.2; bh = 1.7; bd = 6.4; uw = 3.8; uh = 1.0; ud = 5.6; ty = 3.2; tz = 0.8; }
+            if (isLight) { bw = 3.0; bh = 1.1; bd = 5.0; uw = 2.6; uh = 0.6; ud = 4.2; ty = 2.6; tz = 0.8; }
+
+            const body = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), bodyMat);
+            body.position.y = isHeavy ? 1.25 : 1.05;
+            body.castShadow = true;
+            body.receiveShadow = true;
+            tank.add(body);
+
+            const upper = new THREE.Mesh(new THREE.BoxGeometry(uw, uh, ud), bodyMat);
+            upper.position.y = isHeavy ? 2.2 : 1.95;
+            upper.castShadow = true;
+            tank.add(upper);
+
+            const turretPivot = new THREE.Group();
+            turretPivot.position.set(0, ty, tz);
+            tank.add(turretPivot);
+
+            if (isMG) {
+                const turret = new THREE.Mesh(new THREE.BoxGeometry(2.8, 1.1, 2.8), turretMat);
+                turret.castShadow = true;
+                turretPivot.add(turret);
+            } else if (isHeavy) {
+                const turret = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.1, 2.8), turretMat);
+                turret.castShadow = true;
+                turretPivot.add(turret);
+            } else {
+                const turret = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.3, 1.0, 8), turretMat);
+                turret.castShadow = true;
+                turretPivot.add(turret);
+            }
+
+            if (isMG) {
+                for (const side of [-0.5, 0.5]) {
+                    const br = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 2.5, 8), barrelMat);
+                    br.rotation.x = Math.PI / 2;
+                    br.position.set(side, 0.2, 2.4);
+                    br.castShadow = true;
+                    turretPivot.add(br);
+                }
+            } else {
+                const bLen = isHeavy ? 5.6 : (isLight ? 6.0 : 5.0);
+                const bRad = isHeavy ? 0.2 : 0.15;
+                const barrel = new THREE.Mesh(new THREE.CylinderGeometry(bRad, bRad + 0.03, bLen, 8), barrelMat);
+                barrel.rotation.x = Math.PI / 2;
+                barrel.position.set(0, 0.2, bLen / 2 + 0.3);
+                barrel.castShadow = true;
+                turretPivot.add(barrel);
+
+                const muzzle = new THREE.Mesh(new THREE.CylinderGeometry(bRad + 0.05, bRad + 0.05, 0.4, 8), barrelMat);
+                muzzle.rotation.x = Math.PI / 2;
+                muzzle.position.set(0, 0.2, bLen + 0.3);
+                turretPivot.add(muzzle);
+            }
+
+            const trackGeo = new THREE.BoxGeometry(isHeavy ? 0.95 : 0.75, 1.05, isHeavy ? 6.5 : 5.6);
+            const tL = new THREE.Mesh(trackGeo, trackMat);
+            tL.position.set(isHeavy ? -2.0 : -1.65, 0.55, 0);
+            tL.castShadow = true;
+            tank.add(tL);
+            const tR = tL.clone();
+            tR.position.x = isHeavy ? 2.0 : 1.65;
+            tank.add(tR);
+
+            const wheelGeo = new THREE.CylinderGeometry(0.52, 0.52, isHeavy ? 0.9 : 0.75, 10);
+            const wheelCount = isHeavy ? 3 : 2;
+            for (let i = -wheelCount; i <= wheelCount; i++) {
+                const wl = new THREE.Mesh(wheelGeo, trackMat);
+                wl.rotation.z = Math.PI / 2;
+                wl.position.set(isHeavy ? -2.0 : -1.65, 0.55, i * 1.05);
+                tank.add(wl);
+                const wr = wl.clone();
+                wr.position.x = isHeavy ? 2.0 : 1.65;
+                tank.add(wr);
+            }
+
+            const antMat = new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.8, roughness: 0.2 });
+            const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.8, 6), antMat);
+            antenna.position.set(0.7, 0.9, -0.4);
+            turretPivot.add(antenna);
+
+            const flagPole = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.6, 6), new THREE.MeshStandardMaterial({ color: 0x333333 }));
+            flagPole.position.set(0, 2.5, -bd / 2 + 0.3);
+            tank.add(flagPole);
+            const flagColor = isHeavy ? 0xffaa00 : (isLight ? 0x44aaff : 0xff4400);
+            const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.6), new THREE.MeshStandardMaterial({ color: flagColor, side: THREE.DoubleSide }));
+            flag.position.set(0.45, 2.9, -bd / 2 + 0.3);
+            tank.add(flag);
+
+            const lightMat = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
+            const lightL = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), lightMat);
+            lightL.position.set(-1.1, 1.15, bd / 2 - 0.2);
+            tank.add(lightL);
+            const lightR = lightL.clone();
+            lightR.position.x = 1.1;
+            tank.add(lightR);
+
+            return tank;
+        }
+
+        const slides = [
+            {
+                tank: buildTank(0xcc2222, 0xdd3333, 0x222222, 0x1a1a1a, 'normal'),
+                name: 'FOR<span class="accent">CE</span>',
+                sub: 'СТАНДАРТНЫЙ ТАНК'
+            },
+            {
+                tank: buildTank(0x6a5a3a, 0x7a6a4a, 0x222222, 0x111111, 'heavy'),
+                name: 'ТЯЖЁЛЫЙ<br><span class="accent">ТИГР</span>',
+                sub: 'ПРОРЫВ ОБОРОНЫ'
+            },
+            {
+                tank: buildTank(0x3a6a3a, 0x4a7a4a, 0x333333, 0x1a1a1a, 'light'),
+                name: 'ЛЁГКИЙ<br><span class="accent">ШЕРМАН</span>',
+                sub: 'СКОРОСТЬ И МАНЁВР'
+            },
+            {
+                tank: buildTank(0x2266cc, 0x3377dd, 0x222222, 0x111111, 'mg'),
+                name: 'ПУЛЕМЁТНЫЙ<br><span class="accent">ТАНК</span>',
+                sub: 'ШКВАЛ ОГНЯ'
+            },
+            {
+                tank: buildTank(0xdd6622, 0xee7733, 0x333333, 0x1a1a1a, 'normal'),
+                name: 'СВОЙ<br><span class="accent">СТИЛЬ</span>',
+                sub: 'КАСТОМИЗАЦИЯ'
+            }
+        ];
+
+        // Танк у самого левого края
+        const TANK_OFFSET_X = -20.0;
+
+        slides.forEach((s, i) => {
+            s.tank.position.set(TANK_OFFSET_X, 3.5, 0);
+            s.tank.rotation.y = -0.5;
+            s.tank.rotation.x = 0.1;
+            s.tank.scale.set(1.3, 1.3, 1.3);
+            s.tank.visible = (i === 0);
+            scene.add(s.tank);
+        });
+
+        let currentSlide = 0;
+        let transitioning = false;
+        const progressBar = document.getElementById('slideProgress');
+        const dots = document.querySelectorAll('.dot');
+        const tankNameEl = document.getElementById('tankName');
+        const tankSubNameEl = document.getElementById('tankSubName');
+
+        const SLIDE_DURATION = 3200;
+
+        const appearDuration = 900;
+        let appearStart = performance.now();
+
+        slides.forEach(s => s.tank.scale.set(0.01, 0.01, 0.01));
+        slides[0].tank.scale.set(1.3, 1.3, 1.3);
+
+        function showSlideText(index) {
+            tankNameEl.classList.remove('visible');
+            tankSubNameEl.classList.remove('visible');
+            setTimeout(() => {
+                tankNameEl.innerHTML = slides[index].name;
+                tankSubNameEl.textContent = slides[index].sub;
+                tankNameEl.classList.add('visible');
+                tankSubNameEl.classList.add('visible');
+            }, 200);
+        }
+
+        function goToSlide(index) {
+            if (transitioning) return;
+            transitioning = true;
+
+            const oldTank = slides[currentSlide].tank;
+            const newTank = slides[index].tank;
+
+            dots.forEach((d, i) => d.classList.toggle('active', i === index));
+
+            tankNameEl.classList.remove('visible');
+            tankSubNameEl.classList.remove('visible');
+
+            const startTime = performance.now();
+            const duration = 500;
+
+            function transition() {
+                const t = Math.min(1, (performance.now() - startTime) / duration);
+                const eased = 1 - Math.pow(1 - t, 3);
+
+                oldTank.position.y = 3.5 + eased * 6;
+                oldTank.scale.setScalar(1.3 * (1 - eased));
+                oldTank.rotation.y = -0.5 + eased * 0.5;
+                if (oldTank.children[2]) oldTank.children[2].rotation.y = 0;
+
+                if (t < 1) {
+                    requestAnimationFrame(transition);
+                } else {
+                    oldTank.visible = false;
+                    oldTank.position.y = 3.5;
+                    oldTank.position.x = TANK_OFFSET_X;
+                    oldTank.scale.setScalar(1.3);
+
+                    newTank.visible = true;
+                    newTank.position.set(TANK_OFFSET_X, 3.5 - 5, 0);
+                    newTank.scale.set(0.01, 0.01, 0.01);
+                    newTank.rotation.y = -0.5;
+                    appearStart = performance.now();
+                    currentSlide = index;
+                    transitioning = false;
+
+                    showSlideText(index);
+                }
+            }
+            transition();
+        }
+
+        showSlideText(0);
+        appearStart = performance.now();
+        slides[0].tank.scale.set(0.01, 0.01, 0.01);
+
+        setInterval(() => {
+            if (transitioning) return;
+            const next = (currentSlide + 1) % slides.length;
+            goToSlide(next);
+        }, SLIDE_DURATION);
+
+        const clock = new THREE.Clock();
+        let time = 0;
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const dt = Math.min(clock.getDelta(), 0.05);
+            time += dt;
+
+            const now = performance.now();
+
+            const ep = Math.min(1, (now - appearStart) / appearDuration);
+            const eased = 1 - Math.pow(1 - ep, 3);
+
+            const tank = slides[currentSlide].tank;
+            if (tank.visible && !transitioning) {
+                tank.scale.setScalar(1.3 * eased);
+
+                const floatY = 3.5 + Math.sin(time * 1.2) * 0.4;
+                tank.position.x = TANK_OFFSET_X;
+                tank.position.y = floatY;
+                tank.position.z = 0;
+
+                tank.rotation.y = -0.5 + Math.sin(time * 0.4) * 0.3;
+                tank.rotation.z = Math.sin(time * 0.6) * 0.03;
+                tank.rotation.x = 0.1 + Math.sin(time * 0.5) * 0.04;
+
+                if (tank.children[2]) {
+                    tank.children[2].rotation.y = Math.sin(time * 0.5) * 0.2;
+                }
+            }
+
+            // Камера смотрит на левый край
+            camera.position.x = 6 + Math.sin(time * 0.3) * 0.6;
+            camera.position.y = 10 + Math.cos(time * 0.25) * 0.4;
+            camera.position.z = 24 + Math.sin(time * 0.4 + 1) * 0.6;
+            camera.lookAt(TANK_OFFSET_X, 3.5, 0);
+
+            stars.rotation.y = time * 0.01;
+            stars2.rotation.y = -time * 0.008;
+
+            starMat.opacity = 0.3 + Math.sin(time * 2) * 0.2;
+            starMat2.opacity = 0.25 + Math.sin(time * 1.5 + 1) * 0.1;
+
+            const elapsed = (now % SLIDE_DURATION) / SLIDE_DURATION;
+            progressBar.style.width = (elapsed * 100) + '%';
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = innerWidth / innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(innerWidth, innerHeight);
+        });
+    </script>
+</body>
+</html>
